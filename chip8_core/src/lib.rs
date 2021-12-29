@@ -152,6 +152,169 @@ impl Emu {
         let digit2 = (op & 0x0F00)  >> 8;
         let digit3 = (op & 0x00F0)  >> 4;
         let digit4 = op & 0x000F;
+
+        match(digit1, digit2, digit3, digit4) {
+            // NOP : do nothing
+            (0,0,0,0) => return,
+            // CLS : clear screen
+            (0, 0, 0xE, 0) => {
+                self.screen = [false; SCREEN_WIDTH * SCREEN_HEIGHT];
+            },
+            // 00EE Return from subroutine
+            (0,0,0xE, 0xE) => {
+                let ret_addr = self.pop();
+                self.pc = ret_addr;
+            },
+            // 1NNN - Jump 
+            // N means any digit
+            (1,_,_,_) => {
+                // extract those three digits as first digit is simple 0000001 or 1
+                let nnn = op & 0xfff;
+                self.pc = nnn;
+            },
+            // 2NNN - Call Subroutine
+            (2,_,_,_) => {
+                let nnn = op & 0xFFF;
+                // push current address to stack to stack 
+                self.push(self.pc);
+                // update program counter to point to that three digit address.
+                self.pc = nnn;
+            },
+
+            // 3XNN- skip if VX == NN
+            (3,_,_,_) =>  {
+                // represents our register and is a 2nd digit
+                let x = digit2 as usize;
+                // last two bytes
+                let nn = (op & 0xff) as u8; 
+
+                if self.v_reg[x] == nn {
+                    //skip 1 and go directly to 2
+                    self.pc += 2;
+                }
+            },
+            //skip if VX != NN
+            (4, _, _ ,_) => {
+                let x = digit2 as usize;
+                let nn = (op & 0xff) as u8;
+                if self.v_reg[x] != nn {
+                    self.pc += 2;
+                }
+            },
+
+            // skip if VX == VY
+            (5, _, _ , 0) =>  {
+                    let x = digit2 as usize;
+                    let y = digit3 as usize;
+
+                    if self.v_reg[x] == self.v_reg[y] {
+                        self.pc += 2;
+                    }
+            },
+            // 6XNN : VX = NN
+            // set VX to the number given. ( 8 bit number)
+            (6,_,_,_) => {
+                let x = digit2 as usize;
+                let nn = (op & 0xff) as u8;
+                self.v_reg[x] = nn;
+            },
+
+            // 7NNN: VX += NN
+            (7, _, _ ,_) => {
+                let x = digit2 as usize;
+                let nn = (op & 0xff) as u8;
+                self.v_reg[x] = self.v_reg[x].wrapping_add(nn);
+            },
+
+            // 8NN0 : VX = VY
+            (8,_,_,0) => {
+                let X = digit2 as usize;
+                let Y = digit3 as usize;
+
+                self.v_reg[X] = self.v_reg[Y];
+            }
+            // 8XY1 : Bitwose OR: VX | VY
+            (8,_,_,1) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                self.v_reg[x] |= self.v_reg[y];
+            },
+            // 8XY2: Bitwise AND
+            (8,_,_,2) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                self.v_reg[x] &= self.v_reg[y];
+            },
+            // 8XY3: Bitwise XOR
+            (8,_,_,3) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                self.v_reg[x] ^= self.v_reg[y];
+            },
+            // 8XY4 - VX += VY
+            (8,_,_,4) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+
+                let (new_vx, carry) = self.v_reg[x].overflowing_add(self.v_reg[y]);
+                // flag register
+                // set to 1 if there is a carry , set to 0 if there isn't
+                // VF is carry flag
+                let new_vf = if carry { 1 } else {0};
+                self.v_reg[x] = new_vx;
+                self.v_reg[0xf] = new_vf;
+            },
+            // VX -= VY
+            (8,_,_,5) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                let (new_vx , borrow) = self.v_reg[x].overflowing_sub(self.v_reg[y]);
+                //set flag to 0 if there is a borrow
+                let new_vf = if borrow {0} else {1};
+
+                self.v_reg[x] = new_vx;
+                self.v_reg[0xf] = new_vf;
+            },
+            // single right shift VX >> 
+            (8,_,_,6) => {
+                let x = digit2 as usize;
+                let lsb = self.v_reg[x] & 1;
+                self.v_reg[x] >>= 1;
+                self.v_reg[0xf] = lsb;
+            },
+            // Vx = Vy - Vx
+            (8,_,_,7) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                let (new_vx , borrow) = self.v_reg[y].overflowing_sub(self.v_reg[x]);
+                //set flag to 0 if there is a borrow
+                let new_vf = if borrow {0} else {1};
+
+                self.v_reg[x] = new_vx;
+                self.v_reg[0xf] = new_vf;
+
+            },
+            // left shift by 1 , whatever is removed should be stored in flag.
+            (8,_,_,0xE) => {
+                let x = digit2 as usize;
+                let msb = (self.v_reg[x] >> 7) & 1;
+                self.v_reg[x] <<=1;
+                self.v_reg[0xf] = msb;
+            },
+            // 9xy0 vx!=vy 
+            (9,_,_,0) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+
+                if self.v_reg[x] != self.v_reg[y] {
+                    //increment program counter
+                    self.pc += 2;
+                }
+            }
+
+            (_ , _, _, _) => unimplemented!("unimplemented opcode: {}", op),
+
+        }
     
     }
 
