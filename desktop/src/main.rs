@@ -71,10 +71,11 @@ fn main() {
 
         }
 
-
-    for _ in 0..TICKS_PER_FRAME {
         chip8.tick();
-    }
+
+    // for _ in 0..TICKS_PER_FRAME {
+    // }
+
     draw_screen(&chip8, &mut canvas);
 
     }
