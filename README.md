@@ -5,10 +5,28 @@
 </div>
 
 
+## About
+Chip8 is a virtual machine used during 1970s so that video game could easliy be developed among different computer architectures with different instruction set. here is more information [https://en.wikipedia.org/wiki/CHIP-8](https://en.wikipedia.org/wiki/CHIP-8)
+
+
+## To run the program
+
+- ` cd desktop `
+- ` git clone https://github.com/voidash/CHIP-8`
+- ` cd CHIP-8 `
+- ` cd desktop `
+- ` cargo run ../games/PONG2` 
 
 
 
-CHIP-8 is hello world of emulation development. It has 1 bit monochroe display, 1 channel single tone audio and 35 instructions. 
+## screenshot
+
+![](https://i.imgur.com/rrWuRXA.png)
+pong2 
+
+
+![](https://i.imgur.com/OtIDyVJ.png)
+ufo  
 
 
 ## Features 
