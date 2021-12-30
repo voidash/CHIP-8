@@ -1,3 +1,5 @@
+use rand::random;
+
 const FONTSET_SIZE: usize = 80;
 
 const FONT_SET: [u8; FONTSET_SIZE] = [
@@ -309,6 +311,160 @@ impl Emu {
                 if self.v_reg[x] != self.v_reg[y] {
                     //increment program counter
                     self.pc += 2;
+                }
+            },
+            // I reg is used for pointing to RAM. now set whatever is present in 3 hex digits
+            (0xA, _ , _, _) => {
+                let nnn = op & 0xfff;
+                self.i_reg = nnn;
+            },
+            // set program counter to v_reg + nnn 
+            (0xB, _, _ ,_) => {
+                let nnn = op & 0xfff;
+                self.pc = (self.v_reg[0] as u16) + nnn;
+            }
+
+            // CXNN: set VX to rand && NN
+            (0xC, _, _ , _)  => {
+                let x = digit2 as usize;
+                let nn = (op & 0xff) as u8;
+                let rng : u8 = random();
+                self.v_reg[x] = rng & nn;
+            }
+
+            // DNNN: draw sprite .2nd and 3rd digit specify X and Y. Last specifies how tall the pixel is [1 - 16]
+            (0xD, _, _ ,_ ) => {
+                let x_coord = self.v_reg[digit2 as usize] as u16;
+                let y_coord = self.v_reg[digit3 as usize] as u16;
+
+                let num_rows = digit4;
+                
+                let mut flipped = false;
+                for y_line in 0..num_rows {
+                    let addr = self.i_reg + y_line as u16;
+                    let pixels = self.ram[addr as usize];
+
+                    for x_line in 0..8 {
+                        if (pixels & (0b10000000 >> x_line)) != 0 {
+                            let x = (x_coord + x_line) as usize % SCREEN_WIDTH;
+                            let y = (y_coord + y_line) as usize % SCREEN_HEIGHT;
+
+                            let idx = x + SCREEN_WIDTH * y;
+                            flipped |= self.screen[idx];
+                            self.screen[idx] = true;
+
+                        }
+                    }
+                }
+
+                if flipped {
+                    self.v_reg[0xF] = 1;
+                }else {
+                    self.v_reg[0xF] = 0;
+                }
+
+
+            },
+
+            // Ex9e: Skip if key is pressed
+            // 16 different keys 0 to 0xF
+            (0xE, _, 9, 0xE) => {
+                let x = digit2 as usize; 
+                let vx = self.v_reg[x];
+
+                let key = self.keys[vx as usize];
+                if key {
+                    self.pc += 2;
+                }
+            } ,
+
+            // EXA1
+            // skip if key is not pressed
+            (0xE, _ , 0xA, 1) => {
+                let x = digit2 as usize;
+                let vx = self.v_reg[x];
+
+                let key = self.keys[vx as usize];
+                if !key {
+                    self.pc += 2;
+                }
+            },
+            //FX07 
+            // set VX = DT (delay timer)
+            (0xf, _ , 0 , 7) => {
+                let x = digit2 as usize;
+                self.v_reg[x] = self.dt;
+            },
+
+            // WAIT for key press
+            // Blocking
+            (0xf, _ , 0, 0xA) => {
+                let x = digit2 as usize;
+                let mut pressed = false;
+
+                for i in 0..self.keys.len() {
+                    if self.keys[i] {
+                        self.v_reg[x] = i as u8;
+                        pressed = true;
+                        break;
+                    }
+                }
+                
+                if !pressed {
+                    self.pc -= 2;
+                }
+            },
+            //set Delay timer to VX
+            (0xf, _ , 1, 5) => {
+                let x = digit2 as usize;
+                self.dt = self.v_reg[x];
+            },
+            // fx18: st = vx
+            (0xf, _, 1, 8) => {
+                let x = digit2 as usize;
+                self.st = self.v_reg[x];
+            },
+            // fx1e :   i+= vx
+            (0xf, _ ,1 , 0xE) =>  {
+                let x = digit2 as usize;
+                let vx = self.v_reg[x] as u16;
+                self.i_reg = self.i_reg.wrapping_add(vx);
+            },
+            //set I to font address
+            (0xf, _ , 2, 9) => {
+                let x = digit2 as usize;
+                let c = self.v_reg[x] as u16;
+                self.i_reg =  c * 5;
+            },
+
+            // save our number in BCD format. with hundreds, tens and ones.
+            (0xf , _ , 3, 3) => {
+                let x = digit2 as usize;
+                let vx = self.v_reg[x] as f32;
+
+                let hundreds = (vx / 100.0).floor() as u8;
+                let tens = ((vx / 10.0) % 10.0).floor() as u8;
+                let ones = (vx % 10.0) as u8;
+
+                self.ram[self.i_reg as usize] = hundreds;
+                self.ram[(self.i_reg + 1) as usize] = tens;
+                self.ram[(self.i_reg + 2) as usize] = ones;
+            },
+            //store v0 to vx in RAM specified by i_register
+            (0xf, _ , 5, 5) => {
+                let x = digit2 as usize;
+                let i = self.i_reg as usize;
+
+                for idx in 0..=x {
+                    self.ram[i+idx] = self.v_reg[idx];
+                }
+            },
+            //load i into v0 to vx
+            (0xf, _, 6, 5) => {
+                let x = digit2 as usize;
+                let i = self.i_reg as usize;
+                for idx in 0..=x {
+                    self.v_reg[idx] = self.ram[i+idx];
                 }
             }
 
