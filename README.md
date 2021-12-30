@@ -8,8 +8,7 @@
 
 
 
-CHIP-8 is hello world of emulation development. It  
-has 1 bit monochroe display, 1 channel single tone audio and 35 instructions. 
+CHIP-8 is hello world of emulation development. It has 1 bit monochroe display, 1 channel single tone audio and 35 instructions. 
 
 
 ## Features 
